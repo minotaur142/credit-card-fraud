@@ -38,6 +38,7 @@ def impute_missing_values(df,var_deviation_tolerance=0.97, actual_or_gaussian_re
     have_columns = [i for i in columns if i not in missing_columns]
     column_scores = {}
     problems = []
+    models = {}
     for col in tqdm.tqdm(missing_columns):
         try:
             percent_missing = df[col].isna().sum()/df.shape[0]
@@ -81,7 +82,6 @@ def impute_missing_values(df,var_deviation_tolerance=0.97, actual_or_gaussian_re
                 if col in col_floor_ceiling_dict.keys():
                         preds = np.clip(preds,col_floor_ceiling_dict[col][0],col_floor_ceiling_dict[col][1])
             df[col][na_index] = preds
-            have_columns.append(col)
         except:
             problems.append(col)
     if scores == False:

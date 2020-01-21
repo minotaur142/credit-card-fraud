@@ -1,17 +1,24 @@
-from sklearn.datasets import load_breast_cancer
 import pandas as pd
 import numpy as np
-from statsmodels.discrete.discrete_model import Logit
-from statsmodels.tools.tools import add_constant
+from sklearn.linear_model import LogisticRegression
 import random
 import statsmodels.api as sm
-from sklearn.metrics import log_loss
-from utils import _add_constant,_hat_diag,_sigmoid_pred,_sigmoid_pred, _information_matrix, _predict, _predict_proba, _FLIC
-#Firth Class
-#Things left to do: confidence intervals, Cauchy, generalize marginal effects, multinomial
+from utils import _add_constant,_hat_diag,_sigmoid_pred,_sigmoid_pred, _information_matrix, _predict, _predict_proba, _FLIC, _FLAC_aug
+
+
 class PMLE():
     class Firth_Logit():
         def __init__(self,num_iters=10000, alpha=0.01,add_int=True,lmbda=0.5,FLAC=False, FLIC=False):
+            
+            '''PARAMETERS
+               num_iters: number of iterations in gradient descent
+               alpha: learning rate
+               add_int: add intercept
+               
+               MODIFICATIONS FOR RARE EVENTS
+               lmbda: tuneable parameter for target mean prediction value               
+               FLAC: perform Firth Logistic regression with added covariate
+               FLIC: perform Firth Logistic regression with Intercept Correction'''
 
             self.alpha = alpha
             self.num_iters = num_iters
@@ -91,6 +98,13 @@ class PMLE():
             
             
         def marginal_effects(self,values=None):
+            '''PARAMETERS
+               values: user-specified X values
+               
+               RETURNS
+               marginal effects at mean X variable values
+               mean of marginal effects for all rows
+               marginal effects at user-specified values'''
                 
             def at_specific_values(self,values):
                 n_features = self.weights.shape[0]
@@ -106,11 +120,11 @@ class PMLE():
                     effs[i] = new_p-p
                 return effs
             
-            #at means
+            #at mean column values
             column_means = self.X.mean()
             at_means = at_specific_values(weights=column_means)
 
-            #meaned
+            #find marginal effects for each row and take mean
             averaged_marg_effs = np.ones((self.X.shape[0],self.X.shape[1]))
             for i in range(self.X.shape[0]):
                 row = self.X.iloc[i]
@@ -129,7 +143,7 @@ class PMLE():
                 ame['requested_values'] = user_requsted
             return ame
         
-         def predict(self,X):
+        def predict(self,X):
             if self.FLAC==True:
                 X = _FLAC_pred_aug(X)
             if X.shape[1]==self.X.shape[1]-1:
