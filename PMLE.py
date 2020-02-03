@@ -3,36 +3,42 @@ import numpy as np
 from sklearn.linear_model import LogisticRegression
 import random
 import statsmodels.api as sm
-from utils import _add_constant,_hat_diag,_sigmoid_pred,_sigmoid_pred, _information_matrix, _predict, _predict_proba, _FLIC, _FLAC_aug
+from sklearn.metrics import recall_score
+from sklearn.metrics import log_loss
+from utils import _add_constant,_hat_diag,_sigmoid_pred,_sigmoid_pred, _information_matrix, _predict, _predict_proba, _FLIC, _FLAC_aug, _FLAC_pred_aug
 
 
 class PMLE():
     class Firth_Logit():
-        def __init__(self,num_iters=10000, alpha=0.01,add_int=True,lmbda=0.5,FLAC=False, FLIC=False):
+        def __init__(self,num_iters=10000, lr=0.01,add_int=True, metric = None, readout_rate = None, lmbda=0.5,FLAC=False, FLIC=False):
             
             '''PARAMETERS
                num_iters: number of iterations in gradient descent
-               alpha: learning rate
+               lr: learning rate
                add_int: add intercept
+               metric: use 'log_loss' or 'recall_score' in progress readouts and lr reduction schedule
+               readout_rate: number of iterations between readouts
                
                MODIFICATIONS FOR RARE EVENTS
                lmbda: tuneable parameter for target mean prediction value               
                FLAC: perform Firth Logistic regression with added covariate
                FLIC: perform Firth Logistic regression with Intercept Correction'''
 
-            self.alpha = alpha
+            self.lr = lr
             self.num_iters = num_iters
             self.add_int = add_int
             self.lmbda=lmbda
             self.FLAC = FLAC
             self.FLIC=FLIC
+            self.metric = metric
+            self.readout_rate = readout_rate
         
         def firth_gd(self,X,y,weights):
             y_pred = _sigmoid_pred(X=X,weights=weights)
             H =_hat_diag(X,weights)
             I = _information_matrix(X,weights)
             U = np.matmul((y -y_pred + self.lmbda*H*(1 - 2*y_pred)),X)
-            weights += np.matmul(np.linalg.inv(I),U)*self.alpha
+            weights += np.matmul(np.linalg.inv(I),U)*self.lr
             return weights
         
         def fit(self,X,y):
@@ -46,10 +52,35 @@ class PMLE():
             #initialize weights
             weights=np.ones(X.shape[1])
             
+            #initialize metric infrastructure if necessary 
+            if self.metric != None:
+                scores = []
+            if self.metric == 'log_loss':
+                metric = log_loss
+                min_max = min
+            elif self.metric == 'recall_score':
+                metric = recall_score
+                min_max = max
             
             #Perform gradient descent
             for i in range(self.num_iters):
                 weights = self.firth_gd(X,y,weights)
+            
+                if self.metric != None:
+                    proba = _sigmoid_pred(X,weights)
+                    if self.metric == 'recall_score':
+                        proba = proba.round()
+                    score = metric(y,proba)
+
+                    #Print metric
+                    scores.append(score)
+                    if i%self.readout_rate==0:
+                        print('Epoch {} Recall: {}'.format((i+1),score))
+
+                    #Reduce learning rate if necessary 
+                    if (i > 10) & (min_max(scores) not in scores[-10:]):
+                        self.lr = self.lr*0.9
+                
             
             if (self.FLAC==True)&(self.FLIC==True):
                 X,y,aug_sample_weights=_FLAC_aug(X,y,weights)
@@ -146,15 +177,15 @@ class PMLE():
         def predict(self,X):
             if self.FLAC==True:
                 X = _FLAC_pred_aug(X)
-            if X.shape[1]==self.X.shape[1]-1:
+            if self.add_int==True:
                 X=_add_constant(X)
             return _predict(X,self.weights)
         
         def predict_proba(self,X):
             if self.FLAC==True:
                 X = _FLAC_pred_aug(X)
-            if X.shape[1]==self.X.shape[1]-1:
-                X=_add_constant(X)
+            if self.add_int==True:
+                X= _add_constant(X)
             return _predict_proba(X,self.weights)
         
     
